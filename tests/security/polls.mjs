@@ -47,10 +47,11 @@ test('Rules validate direct submissions even if client validation is bypassed',a
  await assertSucceeds(setDoc(doc(stranger,base+'/responses/other'),response));
  await assertFails(deleteDoc(doc(teacher,base+'/responses/other')));
 });
-test('Answered poll lock cannot be reset and definitions cannot be changed even with a stale zero summary',async()=>{
+test('Answered poll structure stays locked while owner may correct display text even with a stale zero summary',async()=>{
  await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),base+'/results/summary'),{responseCount:0,counts:[0,0]});});
  await assertFails(updateDoc(doc(teacher,base),{hasResponses:false}));
- await assertFails(updateDoc(doc(teacher,base),{title:'tampered'}));
+ await assertSucceeds(updateDoc(doc(teacher,base),{title:'Corrected question'}));
+ await assertFails(updateDoc(doc(teacher,base),{options:['C','D']}));
  await assertFails(updateDoc(doc(student,base),{title:'tampered'}));
  await assertFails(deleteDoc(doc(unrelated,base)));
  await assertSucceeds(updateDoc(doc(teacher,base),{accepting:false}));

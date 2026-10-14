@@ -1,6 +1,6 @@
 import {getApp} from 'firebase/app';
 import {getFirestore,collection,doc,onSnapshot,query,where,updateDoc} from 'firebase/firestore';
-import {savePollFirebase,setPollStatusFirebase,removePollFirebase,submitPollFirebase,watchManagedResponsesFirebase,aggregateResponses} from './polls-store.js';
+import {savePollFirebase,updatePollTitleFirebase,setPollStatusFirebase,removePollFirebase,submitPollFirebase,watchManagedResponsesFirebase,aggregateResponses} from './polls-store.js';
 import {isDemo} from './data';
 import {normalizePoll,normalizeSubmission} from './poll-domain.js';
 const KEY='odilsap-demo-v1';
@@ -21,7 +21,7 @@ export function watchPolls(c,callback,fail,management=false){
 export function watchOwnResponse(c,p,user,callback,fail){if(isDemo)return watch(s=>s.pollResponses[key(c,p.id)+'_'+user.uid]||null,callback,fail);return onSnapshot(doc(ref(c,p.id),'responses',user.uid),snap=>callback(snap.exists()?snap.data():null),e=>{callback(null);if(e.code!=='permission-denied')fail?.(e);});}
 export function watchResults(c,p,callback,fail){if(isDemo)return watch(s=>s.pollResults[key(c,p.id)]||null,callback,fail);return onSnapshot(doc(ref(c,p.id),'results','summary'),snap=>callback(snap.exists()?snap.data():null),e=>{callback(null);if(e.code!=='permission-denied')fail?.(e);});}
 async function call(c,id,action,input,user){
- if(!isDemo){const db=getFirestore(getApp());if(action==='remove')return removePollFirebase(db,c,{id});if(action==='save')return savePollFirebase(db,c,id,input);if(action==='status')return setPollStatusFirebase(db,c,{id},input.field,input.value);return submitPollFirebase(db,c,input.poll,input,user);}
+ if(!isDemo){const db=getFirestore(getApp());if(action==='title')return updatePollTitleFirebase(db,c,{id},input.title);if(action==='remove')return removePollFirebase(db,c,{id});if(action==='save')return savePollFirebase(db,c,id,input);if(action==='status')return setPollStatusFirebase(db,c,{id},input.field,input.value);return submitPollFirebase(db,c,input.poll,input,user);}
  const s=read(),k=key(c,id),poll=s.polls[k],aggregate=s.pollResults[k];
  if(s.classes[c.id]?.deleted||s.classes[c.id]?.activeSessionId!==c.activeSessionId)throw new Error('開催回が変わりました。');
  if(action==='submit'){
@@ -33,7 +33,7 @@ async function call(c,id,action,input,user){
   const answer=normalizeSubmission(poll,input);s.pollResponses[responseKey]={...answer,userId:user.uid,createdAt:Date.now()};poll.hasResponses=true;
  }else{
   if(s.classes[c.id].ownerId!==user.uid)throw new Error('授業の管理者だけが操作できます。');
-  if(action==='remove'){delete s.polls[k];}else if(action==='save'){
+  if(action==='title'){if(!poll)throw new Error('投票が見つかりません。');const title=String(input.title||'').trim();if(!title||title.length>1000)throw new Error('投票の設問は1〜1000文字で入力してください。');poll.title=title;poll.updatedAt=Date.now();}else if(action==='remove'){delete s.polls[k];}else if(action==='save'){
    if(poll&&(poll.accepting||poll.hasResponses||aggregate?.responseCount>0))throw new Error('受付中、または回答がある投票は編集できません。');
    s.polls[k]={...normalizePoll(input),id,classId:c.id,sessionId:c.activeSessionId,kind:'poll',accepting:false,resultsPublished:false,hasResponses:false,published:poll?.published!==false,chartType:poll?.chartType||'bar',createdAt:poll?.createdAt||Date.now()};s.pollResults[k]={responseCount:0,counts:s.polls[k].options.map(()=>0)};
   }else{if(!poll)throw new Error('投票が見つかりません。');poll[input.field]=input.value;}
@@ -54,3 +54,5 @@ export function watchResponses(c,p,callback,fail){
 }
 
 export const removePoll=(c,p,user)=>call(c,p.id,'remove',{},user);
+
+export const updatePollTitle=(c,p,title,user)=>call(c,p.id,'title',{title},user);

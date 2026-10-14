@@ -12,3 +12,18 @@ test('Browser datetime-local seconds are accepted without weakening calendar val
  assert.equal(new Date(parseSessionDate('2026-10-06T10:15:42.12')).toISOString(),'2026-10-06T01:15:42.120Z');
  for(const value of ['2026-02-30T10:15:00','2026-10-06T10:15:60','2026-10-06T24:00:00','2026-10-06T10:15Z'])assert.throws(()=>parseSessionDate(value));
 });
+
+test('Pinned posts precede votes in newest posting order and all fit on page one',()=>{
+ const rows=Array.from({length:25},(_,i)=>({id:String(i),createdAt:i,pinned:i<12}));
+ const votes=Array.from({length:20},()=>({questionId:'24'}));
+ for(const order of ['popular','recent']){
+ const ranked=rankQuestions(rows,votes,order);
+ assert.deepEqual(ranked.slice(0,12).map(q=>q.id),Array.from({length:12},(_,i)=>String(11-i)));
+ const pages=[1,2,3].map(page=>paginateQuestions(ranked,page));
+ assert.equal(pages[0].items.length,12);assert.ok(pages[0].items.every(q=>q.pinned));
+ assert.equal(pages[1].items.length,10);assert.equal(pages[2].items.length,3);
+ assert.deepEqual(pages.flatMap(p=>p.items),ranked);
+ }
+ const unpinned=rows.map(q=>({...q,pinned:false}));assert.equal(rankQuestions(unpinned,votes,'popular')[0].id,'24');
+ assert.ok(rows[0].pinned);assert.equal(rows[0].count,undefined);
+});

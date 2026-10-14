@@ -59,3 +59,8 @@ test('Legacy demo state supports prompts; closed and stale submissions fail; vot
  await data.postQuestion(current,'Q&A still works','',student);let questions;stops.push(data.watchContent(id,current.activeSessionId,'questions',q=>questions=q));assert.equal(questions.length,1);
  }finally{stops.forEach(stop=>stop());await unlink(file).catch(()=>{});Object.assign(globalThis,saved);}
 });
+
+test('Pinned free-text answers use posting time before vote ranking',()=>{
+ const answers=[{id:'popular',createdAt:30},{id:'old-pin',createdAt:10,pinned:true},{id:'new-pin',createdAt:20,pinned:true}];
+ for(const order of ['popular','recent'])assert.deepEqual(rankAnswers(answers,[{answerId:'popular'},{answerId:'old-pin'}],order).map(a=>a.id),['new-pin','old-pin','popular']);
+});

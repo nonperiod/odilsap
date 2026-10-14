@@ -14,6 +14,10 @@ export async function savePollFirebase(db,c,id,input){
   return {saved:true};
  });
 }
+export async function updatePollTitleFirebase(db,c,p,value){
+ const title=String(value||'').trim();if(!title||title.length>1000)throw new Error('投票の設問は1〜1000文字で入力してください。');
+ return runTransaction(db,async tx=>{const classroom=await tx.get(classRef(db,c)),snapshot=await tx.get(pollRef(db,c,p.id));assertActive(classroom,c);if(!snapshot.exists())throw new Error('投票が見つかりません。');tx.update(snapshot.ref,{title,updatedAt:Date.now()});});
+}
 export async function setPollStatusFirebase(db,c,p,field,value){
  if(!(['accepting','resultsPublished','published'].includes(field)&&typeof value==='boolean')&&!(field==='chartType'&&['bar','pie'].includes(value)))throw new Error('設定の指定が正しくありません。');
  return runTransaction(db,async tx=>{

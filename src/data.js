@@ -58,6 +58,11 @@ export async function createPrompt(c,body) {
 }
 function assertActive(s,c){if(s.classes[c.id]?.deleted||s.classes[c.id]?.activeSessionId!==c.activeSessionId)throw new Error('開催回が変わりました。新しい画面で操作してください。');}
 function promptRef(c,p){return doc(db,'classes',c.id,'sessions',c.activeSessionId,'prompts',p.id);}
+export async function updatePromptBody(c,p,value,user){
+ const body=cleanResponse(value,'設問');assertManager(c,user);
+ if(isDemo){const s=read();assertActive(s,c);assertManager(s.classes[c.id],user);const prompt=s.prompts[p.id];if(!prompt||prompt.classId!==c.id||prompt.sessionId!==c.activeSessionId)throw new Error('設問が見つかりません。');prompt.body=body;write(s);}
+ else await runTransaction(db,async tx=>{const classroom=(await tx.get(doc(db,'classes',c.id))).data();assertManager(classroom,user);if(classroom.activeSessionId!==c.activeSessionId)throw new Error('開催回が変わりました。');const ref=promptRef(c,p);if(!(await tx.get(ref)).exists())throw new Error('設問が見つかりません。');tx.update(ref,{body});});
+}
 export async function setPromptAccepting(c,p,accepting){
  if(isDemo){const s=read();assertActive(s,c);if(!s.prompts[p.id])throw new Error('設問が見つかりません。');s.prompts[p.id].accepting=accepting;write(s);}
  else await runTransaction(db,async tx=>{const classroom=await tx.get(doc(db,'classes',c.id));if(classroom.data()?.activeSessionId!==c.activeSessionId)throw new Error('開催回が変わりました。');const ref=promptRef(c,p);const snapshot=await tx.get(ref);if(!snapshot.exists())throw new Error('設問が見つかりません。');tx.update(ref,{accepting});});
@@ -158,3 +163,11 @@ export async function removeClass(c,user){
  if(isDemo){const s=read();assertManager(s.classes[c.id],user);s.classes[c.id].deleted=true;s.classes[c.id].published=false;write(s);}
  else await updateDoc(doc(db,'classes',c.id),{deleted:true,published:false});
 }
+
+async function setPostPinned(c,p,post,pinned,user){
+ if(typeof pinned!=='boolean')throw new Error('固定の指定が正しくありません。');assertManager(c,user);
+ if(isDemo){const s=read();assertActive(s,c);assertManager(s.classes[c.id],user);const row=(p?s.answers:s.questions)[post.id];if(!row||row.classId!==c.id||row.sessionId!==c.activeSessionId||(p&&row.promptId!==p.id))throw new Error('投稿が見つかりません。');row.pinned=pinned;write(s);}
+ else await runTransaction(db,async tx=>{const classroom=(await tx.get(doc(db,'classes',c.id))).data();assertManager(classroom,user);if(classroom.activeSessionId!==c.activeSessionId)throw new Error('開催回が変わりました。');const ref=p?doc(promptRef(c,p),'answers',post.id):doc(db,'classes',c.id,'sessions',c.activeSessionId,'questions',post.id);if(!(await tx.get(ref)).exists())throw new Error('投稿が見つかりません。');tx.update(ref,{pinned});});
+}
+export const setQuestionPinned=(c,q,pinned,user)=>setPostPinned(c,null,q,pinned,user);
+export const setAnswerPinned=(c,p,a,pinned,user)=>setPostPinned(c,p,a,pinned,user);
