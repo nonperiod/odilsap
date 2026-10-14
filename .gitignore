@@ -1,0 +1,50 @@
+# Dependencies and generated build
+node_modules/
+dist/
+coverage/
+
+# Local environment; keep the empty configuration template
+.env
+.env.*
+!.env.example
+
+# Firebase local state and deployment target
+.firebase/
+.firebaserc
+
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+*serviceAccount*.json
+credentials.json
+application_default_credentials.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Editor and OS state
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+
+# Local verification artifacts (not application assets)
+/outputs/
+/*.png
+/*.jpg
+/README2.md
+
+# Nested local checkout
+/odilsap/
+
+# Local implementation documentation
+/docs/
+/changelog.md

@@ -1,0 +1,54 @@
+import React,{useEffect,useRef,useState} from 'react';
+import * as pollsData from './polls-data';
+const labels={single:'単一選択',multiple:'複数選択',text:'自由記述'};
+export function Polls({current,user,management,projection,pollPage,goPolls,goQuestions,run,busy,fail,notify}){
+ const [polls,setPolls]=useState([]),[editing,setEditing]=useState(null),[creating,setCreating]=useState(false),[selected,setSelected]=useState(new URLSearchParams(location.search).get('poll')||''),[deleting,setDeleting]=useState(null);
+ const student=!management&&!projection;
+ const audience=student||projection;
+ useEffect(()=>{if(!projection)setSelected('');},[pollPage]);
+ useEffect(()=>pollsData.watchPolls(current,setPolls,fail,management),[current.id,current.activeSessionId,management]);
+ const ordered=[...polls].sort((a,b)=>a.createdAt-b.createdAt);
+ const active=ordered.find(p=>p.id===selected)||(audience&&ordered.length===1?ordered[0]:null);
+ const displayed=audience?(active?[active]:[]):ordered;
+ if(audience&&!pollPage)return polls.length>0?<section className="response-invitation card"><div><h2>ライブ投票</h2><p>先生からの投票が {polls.length} 件あります。</p></div><button className="primary" onClick={goPolls}>ライブ投票へ進む →</button></section>:null;
+ return <section className="polls card activities">{audience&&<nav className="response-navigation" aria-label="投票ページの移動"><button className="secondary" onClick={goQuestions}>← 質問・Q&Aに戻る</button>{active&&polls.length>1&&<button className="secondary" onClick={()=>setSelected('')}>投票一覧に戻る</button>}</nav>}<div className="section-heading"><h2>ライブ投票 <span className="badge">{polls.length}</span></h2>{management&&<button className="primary" disabled={busy} onClick={()=>{setEditing(null);setCreating(true);}}>＋ 投票を作成</button>}</div>
+ {management&&deleting&&<section className="confirm"><b>このライブ投票を削除しますか？</b><p>{deleting.title}</p><p>投票は一覧から削除され、学生は回答・結果を取得できなくなります。この操作は元に戻せません。</p><div className="heading-actions"><button className="primary" disabled={busy} onClick={()=>run(async()=>{await pollsData.removePoll(current,deleting,user);setDeleting(null);setEditing(null);notify('投票を削除しました');})}>削除する</button><button className="secondary" disabled={busy} onClick={()=>setDeleting(null)}>キャンセル</button></div></section>}
+ {management&&(creating||editing)&&<PollEditor key={editing?.id||'new'} poll={editing} busy={busy} cancel={()=>{setCreating(false);setEditing(null);}} save={async input=>{await run(async()=>{await pollsData.savePoll(current,editing?.id||crypto.randomUUID(),input,user);setCreating(false);setEditing(null);notify('投票を保存しました');});}}/>}
+ {audience&&!active&&ordered.length>1&&<><p>{projection?'表示する投票を選んでください。':'回答する投票を選んでください。'}</p><div className="prompt-title-list">{ordered.map(p=><button className={'prompt-title'+(!p.accepting?' prompt-closed':'')} key={p.id} onClick={()=>setSelected(p.id)}><span>{p.title}</span><small>{p.accepting?'回答受付中':'回答受付終了'}</small><span aria-hidden="true">→</span></button>)}</div></>}
+ {!(student&&ordered.length>1)&&!displayed.length&&<p>{projection?'投票が見つかりません。開催回が切り替わった可能性があります。':management?'投票を作成して、回答の受付を開始しましょう。':'先生が投票を作成すると、ここに表示されます。'}</p>}
+ {[...displayed].sort((a,b)=>a.createdAt-b.createdAt).map(p=><PollItem key={p.id} poll={p} current={current} user={user} management={management} projection={projection} busy={busy} run={run} fail={fail} notify={notify} remove={()=>setDeleting(p)} edit={()=>{setCreating(false);setEditing(p);}}/>)}
+ </section>;
+}
+function PollEditor({poll,busy,cancel,save}){
+ const [title,setTitle]=useState(poll?.title||''),[type,setType]=useState(poll?.type||'single'),[options,setOptions]=useState((poll?.options||['','']).join('\n'));
+ return <form className="poll-editor" onSubmit={e=>{e.preventDefault();save({title,type,options:options.split('\n')});}}><h3>{poll?'投票を編集':'新しい投票'}</h3><label>設問<textarea required maxLength={1000} value={title} onChange={e=>setTitle(e.target.value)}/></label><label>回答形式<select value={type} onChange={e=>setType(e.target.value)}>{Object.entries(labels).map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>{type!=='text'&&<label>選択肢（1行に1件、2〜8件、各100文字以内）<textarea required rows={5} value={options} onChange={e=>setOptions(e.target.value)}/></label>}<p>受付を終了し、回答がまだない投票を編集できます。回答がある場合は新しい投票を作成してください。</p><div className="heading-actions"><button className="primary" disabled={busy}>保存する</button><button type="button" className="secondary" disabled={busy} onClick={cancel}>キャンセル</button></div></form>;
+}
+function PollItem({poll,current,user,management,projection,busy,run,fail,notify,edit,remove}){
+ const [own,setOwn]=useState(null),[loaded,setLoaded]=useState(false),[result,setResult]=useState(null),[choices,setChoices]=useState([]),[text,setText]=useState(''),[name,setName]=useState(''),[sending,setSending]=useState(false),[responses,setResponses]=useState([]);
+ const locked=useRef(false),canSee=management||(poll.published!==false&&poll.resultsPublished);
+ useEffect(()=>{setOwn(null);setLoaded(false);if(projection)return;return pollsData.watchOwnResponse(current,poll,user,r=>{setOwn(r);setLoaded(true);},fail);},[current.id,current.activeSessionId,poll.id,user.uid,projection]);
+ useEffect(()=>{setResult(null);if(!canSee)return;return pollsData.watchResults(current,poll,setResult,fail);},[current.id,current.activeSessionId,poll.id,canSee]);
+ useEffect(()=>{setResponses([]);if(!management)return;return pollsData.watchResponses(current,poll,setResponses,fail);},[current.id,current.activeSessionId,poll.id,management,poll.type,JSON.stringify(poll.options)]);
+ useEffect(()=>{setChoices([]);setText('');},[poll.title,poll.type,JSON.stringify(poll.options)]);
+ const submit=async e=>{e.preventDefault();if(locked.current||own||!loaded)return;locked.current=true;setSending(true);try{await run(async()=>{await pollsData.submitPoll(current,poll,{choices,text,name},user);notify('投票を提出しました');});}finally{locked.current=false;setSending(false);}};
+ return <article className="poll-item"><h3>{poll.title}</h3><div className="poll-meta"><span>{labels[poll.type]}</span><span className={'accepting '+(poll.accepting?'open':'')}>{poll.accepting?'回答受付中':'回答受付終了'}</span><span>{poll.resultsPublished?'結果公開中':'結果は未公開'}</span></div>
+ {management&&<div className="moderation">{poll.published===false&&<span className="hidden-badge">学生には非表示</span>}<button className="secondary" disabled={busy} onClick={()=>run(()=>pollsData.setPollStatus(current,poll,'accepting',!poll.accepting,user))}>{poll.accepting?'受付を終了':'受付を開始'}</button><button className="secondary" disabled={busy} onClick={()=>run(()=>pollsData.setPollStatus(current,poll,'resultsPublished',!poll.resultsPublished,user))}>{poll.resultsPublished?'結果を非公開にする':'結果を公開する'}</button><button className="secondary" disabled={busy||poll.accepting||!result||result.responseCount>0||poll.hasResponses} onClick={edit}>編集</button><a className="secondary" target="_blank" rel="noreferrer" href={`/?class=${encodeURIComponent(current.id)}&view=projector&poll=${encodeURIComponent(poll.id)}`}>この投票を投影 ↗</a><button className="secondary" disabled={busy} onClick={()=>run(()=>pollsData.setPollStatus(current,poll,'published',poll.published===false,user))}>{poll.published===false?'ライブ投票を再表示':'ライブ投票を非表示'}</button><button className="delete-button" disabled={busy} onClick={remove}>削除</button></div>}
+ {management&&poll.type!=='text'&&<label className="poll-chart-picker">結果のグラフ<select aria-label={`${poll.title}のグラフ表示`} value={poll.chartType||'bar'} disabled={busy} onChange={e=>{const value=e.target.value;run(()=>pollsData.setPollStatus(current,poll,'chartType',value,user));}}><option value="bar">棒グラフ</option><option value="pie">円グラフ</option></select></label>}
+ {!projection&&!management&&(!loaded?<p>提出状況を確認しています…</p>:own?<div className="poll-submitted" role="status"><b>✓ 提出済み</b><p>{own.name||'匿名'}で回答しました。</p><p>{poll.type==='text'?own.text:own.choices.map(i=>poll.options[i]).join('、')}</p></div>:poll.accepting?<form className="poll-response" onSubmit={submit}>{poll.type==='text'?<label>あなたの回答<textarea required maxLength={1000} value={text} onChange={e=>setText(e.target.value)}/></label>:<fieldset><legend>{poll.type==='multiple'?'当てはまるものをすべて選んでください':'1つ選んでください'}</legend>{poll.options.map((option,i)=><label className="poll-option" key={i}><input type={poll.type==='single'?'radio':'checkbox'} name={`poll-${poll.id}`} checked={choices.includes(i)} disabled={sending||busy} onChange={e=>setChoices(poll.type==='single'?[i]:e.target.checked?[...choices,i]:choices.filter(x=>x!==i))}/><span>{option}</span></label>)}</fieldset>}<label>名前（未入力なら匿名）<input maxLength={40} value={name} onChange={e=>setName(e.target.value)}/></label><p>提出はこのブラウザの認証IDにつき1回です。提出後の変更はできません。</p><button className="primary" disabled={busy||sending||(poll.type==='text'?!text.trim():!choices.length)}>{sending?'提出中…':'投票を提出'}</button></form>:<p>現在、回答を受け付けていません。</p>)}
+ {management&&responses.length>0&&<details className="poll-private-responses"><summary>個別回答を確認（管理者のみ・{responses.length}件）</summary>{responses.map((r,i)=><div key={r.userId||i}><b>{r.name||'匿名'}</b><p>{poll.type==='text'?r.text:r.choices.map(n=>poll.options[n]).join('、')}</p></div>)}</details>}
+ <p className="comment-policy">集計は先生が管理画面を開いている間に更新されます。閉じている間の回答も保存され、再び開くと反映されます。</p>
+ {canSee?<PollResults poll={poll} result={result}/>:<p>集計結果は先生が公開すると表示されます。</p>}
+ </article>;
+}
+const chartColors=['#a9ddc8','#edda92','#e7aacb','#b9b3e4','#a5d5e8','#efb89e','#cbd89d','#d7b5d9'];
+function PollResults({poll,result}){
+ if(!result)return <p>集計を読み込んでいます…</p>;
+ const total=result.counts.reduce((sum,n)=>sum+n,0);
+ let position=0;
+ const gradient=result.counts.map((count,i)=>{const start=position;position+=total?count/total*100:0;return `${chartColors[i]} ${start}% ${position}%`;}).join(',');
+ const pie=poll.chartType==='pie';
+ return <div className="poll-results" aria-live="polite"><h4>集計結果：{result.responseCount} 人が回答</h4>{poll.type==='text'?<p>自由記述は回答数を表示します。個別の回答内容は学生には公開しません。</p>:<>
+ <p>{pie?(poll.type==='multiple'?'円の割合は選ばれた選択肢の総数を基準にしています。':'円の割合は回答者数を基準にしています。'):(poll.type==='multiple'?'割合は回答者数を基準にしています（合計が100%を超える場合があります）。':'割合は回答者数を基準にしています。')}</p>
+ {pie&&(total?<div className="poll-pie" role="img" aria-label={`円グラフ：${poll.options.map((option,i)=>`${option} ${result.counts[i]||0}件`).join('、')}`} style={{background:`conic-gradient(${gradient})`}}/>:<p>回答が集まると円グラフを表示します。</p>)}
+ {poll.options.map((option,i)=>{const count=result.counts[i]||0,denominator=pie?total:result.responseCount,percent=denominator?Math.round(count/denominator*100):0;return <div className="poll-result-row" key={i}><div><span>{pie&&<i className="poll-color-key" style={{background:chartColors[i]}}/>}{option}</span><b>{count} 件（{percent}%）</b></div>{!pie&&<div className="poll-bar-track" role="img" aria-label={`${option}：${count}件、${percent}%`}><div className="poll-bar" style={{width:`${percent}%`,background:chartColors[i]}}/></div>}</div>;})}</>}</div>;
+}
