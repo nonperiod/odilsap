@@ -3,10 +3,9 @@ node_modules/
 dist/
 coverage/
 
-# Local environment; keep the empty configuration template
+# Local environment and configuration templates
 .env
 .env.*
-!.env.example
 
 # Firebase local state and deployment target
 .firebase/
@@ -48,3 +47,7 @@ Thumbs.db
 # Local implementation documentation
 /docs/
 /changelog.md
+
+# Local Firebase deployment configuration and rules
+/firebase.json
+/firestore.rules
